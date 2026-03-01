@@ -25,7 +25,15 @@ export const WELL_KNOWN_PREFIXES = {
   'investigation': 'https://ontology.caseontology.org/case/investigation/',
   'case-vocabulary': 'https://ontology.caseontology.org/case/vocabulary/',
   'vocabulary': 'https://ontology.caseontology.org/case/vocabulary/',
-  'solveit': 'http://www.intavia.eu/solveit/',
+  'solveit-core': 'https://ontology.solveit-df.org/solveit/core/',
+  'solveit-observable': 'https://ontology.solveit-df.org/solveit/observable/',
+  'solveit-analysis': 'https://ontology.solveit-df.org/solveit/analysis/',
+  'solveit-acquisition': 'https://ontology.solveit-df.org/solveit/observable/acquisition/',
+  'solveit-search': 'https://ontology.solveit-df.org/solveit/observable/search/',
+  'solveit-timeline': 'https://ontology.solveit-df.org/solveit/observable/timeline/',
+  'solveit-shapes': 'https://ontology.solveit-df.org/solveit/observable/shapes/',
+  'solveit-sqlite': 'https://ontology.solveit-df.org/solveit/sqlite/',
+  'solveit-tool': 'https://ontology.solveit-df.org/solveit/tool-profile/',
 };
 
 // Build a reverse map: namespace → prefix (longest namespace first for matching)
@@ -37,6 +45,8 @@ const _dynamicPrefixes = new Map();
 
 export function registerPrefixes(prefixes) {
   for (const [prefix, ns] of Object.entries(prefixes)) {
+    // Skip empty prefix (`:`) — it shadows proper named prefixes
+    if (!prefix) continue;
     if (!WELL_KNOWN_PREFIXES[prefix]) {
       _dynamicPrefixes.set(prefix, ns);
     }
