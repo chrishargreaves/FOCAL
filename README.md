@@ -2,7 +2,7 @@
 
 # FOCAL (Forensic Ontologies Catalogued and Linked)
 
-This webapp aggregates several digital forensic ontologies for ease of use, searching and comparison.
+This **prototype** webapp aggregates several digital forensic ontologies for ease of review, searching, and comparison.
 
 
 # Credits and Disclaimer
