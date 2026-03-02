@@ -460,13 +460,23 @@ export const useOntologyStore = create((set, get) => ({
   },
 
   toggleGroup: (groupName) => {
-    const { sources } = get();
+    const { sources, viewGroups } = get();
     const groupSources = sources.filter(s => (s.group || s.name) === groupName);
     if (groupSources.length === 0) return;
     const allEnabled = groupSources.every(s => s.enabled);
     const target = !allEnabled;
     for (const src of groupSources) {
       if (src.enabled !== target) get().toggleSource(src.id);
+    }
+    // Sync viewGroups with the toggle so the sidebar reflects the change
+    if (viewGroups) {
+      const next = new Set(viewGroups);
+      if (target) {
+        next.add(groupName);
+      } else {
+        next.delete(groupName);
+      }
+      get().setViewGroups(next);
     }
   },
 
