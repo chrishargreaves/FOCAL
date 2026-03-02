@@ -3,15 +3,17 @@ import { registerPrefixes } from './prefixes.js';
 
 const CACHE_PREFIX = 'focal-ttl-';
 
-export async function fetchAndParse(url) {
+export async function fetchAndParse(url, { skipCache = false } = {}) {
   const cacheKey = CACHE_PREFIX + url;
   let ttlText = null;
 
-  // Check sessionStorage cache
-  try {
-    ttlText = sessionStorage.getItem(cacheKey);
-  } catch {
-    // sessionStorage unavailable
+  // Check sessionStorage cache (unless bypassed)
+  if (!skipCache) {
+    try {
+      ttlText = sessionStorage.getItem(cacheKey);
+    } catch {
+      // sessionStorage unavailable
+    }
   }
 
   // Fetch if not cached

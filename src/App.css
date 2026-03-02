@@ -291,6 +291,42 @@ button {
 }
 
 /* ===== Ontology Manager ===== */
+.ont-refresh-bar {
+  display: flex;
+  justify-content: flex-end;
+}
+.ont-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.ont-refresh-btn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.ont-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ont-refresh-icon {
+  display: inline-block;
+  font-size: 14px;
+}
+.ont-refresh-icon.spinning {
+  animation: ont-spin 0.8s linear infinite;
+}
+@keyframes ont-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 .ontology-manager {
   background: var(--color-bg-secondary);
   border-bottom: 1px solid var(--color-border);

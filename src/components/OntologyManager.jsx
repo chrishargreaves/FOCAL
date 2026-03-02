@@ -350,12 +350,20 @@ export default function OntologyManager() {
   const addCustomOntology = useOntologyStore(s => s.addCustomOntology);
   const removeCustomOntology = useOntologyStore(s => s.removeCustomOntology);
   const loadOntology = useOntologyStore(s => s.loadOntology);
+  const forceRefreshAll = useOntologyStore(s => s.forceRefreshAll);
   const toggleToolbarGroup = useOntologyStore(s => s.toggleToolbarGroup);
   const toolbarGroups = useOntologyStore(s => s.toolbarGroups);
 
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [color, setColor] = useState('#9b59b6');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await forceRefreshAll();
+    setRefreshing(false);
+  };
 
   const handleAdd = (e) => {
     e.preventDefault();
@@ -369,8 +377,21 @@ export default function OntologyManager() {
   const communitySources = sources.filter(s => s.category === 'community');
   const customSources = sources.filter(s => s.isCustom);
 
+  const anyLoading = [...ontologyState.values()].some(s => s.status === 'loading');
+
   return (
     <div className="ontology-manager">
+      <div className="ont-refresh-bar">
+        <button
+          className="ont-refresh-btn"
+          onClick={handleRefresh}
+          disabled={refreshing || anyLoading}
+          title="Force refresh all ontologies (bypass cache)"
+        >
+          <span className={refreshing ? 'ont-refresh-icon spinning' : 'ont-refresh-icon'}>&#8635;</span>
+          {refreshing ? 'Refreshing\u2026' : 'Refresh All'}
+        </button>
+      </div>
       <CategorySection
         categoryKey="official"
         sources={officialSources}

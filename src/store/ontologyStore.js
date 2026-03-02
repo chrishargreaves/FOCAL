@@ -185,7 +185,7 @@ export const useOntologyStore = create((set, get) => ({
     set({ theme: newTheme });
   },
 
-  loadOntology: async (id) => {
+  loadOntology: async (id, { skipCache = false } = {}) => {
     const { sources, ontologyState } = get();
     const source = sources.find(s => s.id === id);
     if (!source) return;
@@ -196,7 +196,7 @@ export const useOntologyStore = create((set, get) => ({
     set({ ontologyState: newState });
 
     try {
-      const result = await fetchAndParse(source.url);
+      const result = await fetchAndParse(source.url, { skipCache });
       // Extract owl:Ontology IRI from the loaded store
       const ontQuads = result.store.getQuads(null, RDF_TYPE, OWL_ONTOLOGY, null);
       const ontologyIri = ontQuads.length > 0 && ontQuads[0].subject.termType === 'NamedNode'
@@ -240,6 +240,12 @@ export const useOntologyStore = create((set, get) => ({
     const { sources, loadOntology } = get();
     const enabled = sources.filter(s => s.enabled);
     await Promise.allSettled(enabled.map(s => loadOntology(s.id)));
+  },
+
+  forceRefreshAll: async () => {
+    const { sources, loadOntology } = get();
+    const enabled = sources.filter(s => s.enabled);
+    await Promise.allSettled(enabled.map(s => loadOntology(s.id, { skipCache: true })));
   },
 
   rebuildEntityIndex: () => {
