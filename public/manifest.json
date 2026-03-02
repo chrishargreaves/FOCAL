@@ -1,0 +1,16 @@
+{
+  "name": "FOCAL — Forensic Ontologies Catalogued and Linked",
+  "short_name": "FOCAL",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "580x580",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff"
+}
