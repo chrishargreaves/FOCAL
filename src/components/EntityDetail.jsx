@@ -513,9 +513,9 @@ export default function EntityDetail() {
       {/* Facet Properties */}
       {entry.type === 'class' && !entry.isFacet && (
         <CollapsibleSection
-          title="Facet Properties"
+          title="Possible Facet Properties"
           count={facetMatches.length > 0 ? facetMatches.length + ' facets' : null}
-          defaultOpen={facetMatches.length > 0}
+          defaultOpen={true}
           forceState={sectionForce}
         >
           <FacetProperties classIri={selectedEntityIri} />

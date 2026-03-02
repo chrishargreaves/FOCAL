@@ -63,7 +63,11 @@ function FacetGroup({ facetIri, matchType, stores, entityIndex, selectEntity }) 
         >
           {localName}
         </span>
-        <span className="facet-match-type">{matchType}</span>
+        <span className="facet-match-type">{matchType === 'exact'
+          ? 'exact (ClassName + "Facet")'
+          : matchType === 'prefix'
+            ? 'prefix (starts with ClassName)'
+            : matchType}</span>
       </div>
       {shaclProps.length > 0 && (
         <PropertyTable

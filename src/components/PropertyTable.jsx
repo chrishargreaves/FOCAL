@@ -7,7 +7,7 @@ export default function PropertyTable({ properties, entityIndex, selectEntity })
         <tr>
           <th>Property</th>
           <th>Type / Range</th>
-          <th>Card.</th>
+          <th>Cardinality</th>
         </tr>
       </thead>
       <tbody>
