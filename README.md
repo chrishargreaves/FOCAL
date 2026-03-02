@@ -4,6 +4,8 @@
 
 This **prototype** webapp aggregates several digital forensic ontologies for ease of review, searching, and comparison.
 
+Webapp available [here](https://chrishargreaves.github.io/FOCAL/).
+
 
 # Credits and Disclaimer
 
