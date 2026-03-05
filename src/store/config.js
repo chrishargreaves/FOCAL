@@ -108,10 +108,20 @@ export const DEFAULT_ONTOLOGIES = [
   uco('co',            'Collections',   'co/co.ttl'),
   uco('owl',           'OWL',           'owl/owl.ttl'),
 
-  // ── Official: CASE (3 modules) ──
+  // ── Official: CASE (3 modules + facet cardinalities) ──
   caseOnt('investigation', 'Investigation', 'investigation/investigation.ttl'),
   caseOnt('vocabulary',    'Vocabulary',    'vocabulary/vocabulary.ttl'),
   caseOnt('master',        'Master',        'master/case.ttl'),
+  {
+    id: 'case-facet-cardinalities',
+    name: 'CASE Facet Cardinalities',
+    url: 'https://raw.githubusercontent.com/casework/CASE-Mapping-Template-Stubs/main/var/facet_cardinalities.ttl',
+    color: CASE_COLOR,
+    enabled: true,
+    group: 'CASE',
+    category: 'official',
+    issuesUrl: 'https://github.com/casework/CASE-Mapping-Template-Stubs/issues/new',
+  },
 
   // ── Community: SOLVE-IT (9 ontology modules + 1 KB) ──
   solveit('core',                   'Core',                   'solve_it_core.ttl'),

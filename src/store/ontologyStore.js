@@ -3,7 +3,7 @@ import { DataFactory } from 'n3';
 import { DEFAULT_ONTOLOGIES } from './config.js';
 import { fetchAndParse } from '../utils/rdfParser.js';
 import { compactIri, extractLocalName, WELL_KNOWN_PREFIXES } from '../utils/prefixes.js';
-import { findFacetClasses, buildFacetMap, extractShaclProperties, getOwlProperties, getClassHierarchy } from '../utils/facetResolver.js';
+import { findFacetClasses, buildFacetMap, buildFacetMapFromRestrictions, extractShaclProperties, getOwlProperties, getClassHierarchy } from '../utils/facetResolver.js';
 
 const { namedNode } = DataFactory;
 
@@ -114,7 +114,8 @@ export const useOntologyStore = create((set, get) => ({
   ontologyIriCache: new Map(), // sourceId → ontologyIri, persists across disable/enable
   entityIndex: new Map(),
   facetClasses: new Set(),
-  facetMap: new Map(),
+  facetMap: new Map(),         // name-based heuristic matches
+  restrictionFacetMap: new Map(), // OWL restriction-backed matches
   searchQuery: '',
   selectedEntityIri: null,
   navHistory: [],      // stack of previously visited IRIs
@@ -325,7 +326,8 @@ export const useOntologyStore = create((set, get) => ({
     if (storeEntries.length === 0) return;
 
     const facetClasses = findFacetClasses(storeEntries);
-    const facetMap = buildFacetMap(facetClasses, entityIndex);
+    const restrictionMap = buildFacetMapFromRestrictions(storeEntries, facetClasses);
+    const facetMap = buildFacetMap(facetClasses, entityIndex, restrictionMap);
 
     // Mark facet entities
     const updatedIndex = new Map(entityIndex);
@@ -335,7 +337,7 @@ export const useOntologyStore = create((set, get) => ({
       }
     }
 
-    set({ facetClasses, facetMap, entityIndex: updatedIndex });
+    set({ facetClasses, facetMap, restrictionFacetMap: restrictionMap, entityIndex: updatedIndex });
   },
 
   rebuildEntityStats: () => {

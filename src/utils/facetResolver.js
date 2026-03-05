@@ -17,6 +17,8 @@ const OWL_ALL_VALUES_FROM = namedNode(WELL_KNOWN_PREFIXES.owl + 'allValuesFrom')
 const OWL_CARDINALITY = namedNode(WELL_KNOWN_PREFIXES.owl + 'cardinality');
 const OWL_MIN_CARDINALITY = namedNode(WELL_KNOWN_PREFIXES.owl + 'minCardinality');
 const OWL_MAX_CARDINALITY = namedNode(WELL_KNOWN_PREFIXES.owl + 'maxCardinality');
+const OWL_QUALIFIED_CARDINALITY = namedNode(WELL_KNOWN_PREFIXES.owl + 'qualifiedCardinality');
+const OWL_ON_CLASS = namedNode(WELL_KNOWN_PREFIXES.owl + 'onClass');
 const SH_PROPERTY = namedNode(WELL_KNOWN_PREFIXES.sh + 'property');
 const SH_PATH = namedNode(WELL_KNOWN_PREFIXES.sh + 'path');
 const SH_DATATYPE = namedNode(WELL_KNOWN_PREFIXES.sh + 'datatype');
@@ -80,9 +82,44 @@ export function findFacetClasses(stores) {
 }
 
 /**
- * Build a map from class IRI → matched facet classes.
+ * Build a map from class IRI → facet classes found via OWL restrictions on core:hasFacet.
  */
-export function buildFacetMap(facetClasses, entityIndex) {
+export function buildFacetMapFromRestrictions(stores, facetClasses) {
+  const HAS_FACET_IRI = WELL_KNOWN_PREFIXES.core + 'hasFacet';
+  const restrictionMap = new Map();
+
+  for (const { store } of stores) {
+    const subClassQuads = store.getQuads(null, RDFS_SUBCLASS_OF, null, null);
+    for (const quad of subClassQuads) {
+      if (quad.subject.termType !== 'NamedNode') continue;
+      if (quad.object.termType !== 'BlankNode') continue;
+
+      const bn = quad.object;
+      if (store.getQuads(bn, RDF_TYPE, OWL_RESTRICTION, null).length === 0) continue;
+
+      const onProp = getFirst(store, bn, OWL_ON_PROPERTY);
+      if (onProp !== HAS_FACET_IRI) continue;
+
+      const onClass = getFirst(store, bn, OWL_ON_CLASS);
+      if (!onClass || !facetClasses.has(onClass)) continue;
+
+      const classIri = quad.subject.value;
+      if (!restrictionMap.has(classIri)) restrictionMap.set(classIri, []);
+      restrictionMap.get(classIri).push({
+        facetIri: onClass,
+        matchType: 'restriction',
+      });
+    }
+  }
+
+  return restrictionMap;
+}
+
+/**
+ * Build a map from class IRI → matched facet classes (name-based heuristic).
+ * Skips any facets already linked via restrictionMap.
+ */
+export function buildFacetMap(facetClasses, entityIndex, restrictionMap = new Map()) {
   const facetMap = new Map();
 
   // Build a lookup of facet localNames
@@ -95,19 +132,29 @@ export function buildFacetMap(facetClasses, entityIndex) {
   for (const [iri, entry] of entityIndex) {
     if (entry.type !== 'class' || facetClasses.has(iri)) continue;
 
+    // Collect restriction-backed facet IRIs for this class so we can skip duplicates
+    const restrictionFacets = new Set(
+      (restrictionMap.get(iri) || []).map(m => m.facetIri)
+    );
+
     const matches = [];
     const ln = entry.localName;
 
     // Exact match: ClassName + "Facet"
     const exactName = ln + 'Facet';
     if (facetByLocalName.has(exactName)) {
-      matches.push({ facetIri: facetByLocalName.get(exactName), matchType: 'exact' });
+      const facetIri = facetByLocalName.get(exactName);
+      if (!restrictionFacets.has(facetIri)) {
+        matches.push({ facetIri, matchType: 'exact' });
+      }
     }
 
     // Prefix match: any facet starting with className (but not exact match)
     for (const [facetLn, facetIri] of facetByLocalName) {
       if (facetLn !== exactName && facetLn.startsWith(ln) && facetLn.endsWith('Facet')) {
-        matches.push({ facetIri, matchType: 'prefix' });
+        if (!restrictionFacets.has(facetIri)) {
+          matches.push({ facetIri, matchType: 'prefix' });
+        }
       }
     }
 
@@ -289,6 +336,12 @@ export function getOwlRestrictions(stores, classIri) {
 
       const maxCard = getFirst(store, bn, OWL_MAX_CARDINALITY);
       if (maxCard) restriction.maxCardinality = parseInt(maxCard, 10);
+
+      const qualCard = getFirst(store, bn, OWL_QUALIFIED_CARDINALITY);
+      if (qualCard) restriction.qualifiedCardinality = parseInt(qualCard, 10);
+
+      const onClass = getFirst(store, bn, OWL_ON_CLASS);
+      if (onClass) restriction.onClass = onClass;
 
       restrictions.push(restriction);
     }

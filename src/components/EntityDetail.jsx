@@ -95,6 +95,7 @@ export default function EntityDetail() {
   const sources = useOntologyStore(s => s.sources);
   const selectEntity = useOntologyStore(s => s.selectEntity);
   const facetMap = useOntologyStore(s => s.facetMap);
+  const restrictionFacetMap = useOntologyStore(s => s.restrictionFacetMap);
   const viewGroups = useOntologyStore(s => s.viewGroups);
 
   const entry = entityIndex.get(selectedEntityIri);
@@ -280,10 +281,25 @@ export default function EntityDetail() {
       }
     }
 
+    // Reverse facet map: find classes that link to this class via restriction
+    for (const [classIri, matches] of restrictionFacetMap) {
+      for (const { facetIri } of matches) {
+        if (facetIri === selectedEntityIri) {
+          refs.push({
+            iri: classIri,
+            via: 'hasFacet restriction',
+            ownerIri: null,
+            matchType: 'restriction',
+          });
+        }
+      }
+    }
+
     // Reverse facet map: find classes that link to this class by naming convention
+    const restrictionRefs = new Set(refs.map(r => r.iri));
     for (const [classIri, matches] of facetMap) {
       for (const { facetIri, matchType } of matches) {
-        if (facetIri === selectedEntityIri) {
+        if (facetIri === selectedEntityIri && !restrictionRefs.has(classIri)) {
           refs.push({
             iri: classIri,
             via: 'name match',
@@ -296,10 +312,12 @@ export default function EntityDetail() {
 
     refs.sort((a, b) => extractLocalName(a.iri).localeCompare(extractLocalName(b.iri)));
     return refs;
-  }, [stores, selectedEntityIri, entry?.type, facetMap]);
+  }, [stores, selectedEntityIri, entry?.type, facetMap, restrictionFacetMap]);
 
   // Facet matches
+  const restrictionMatches = restrictionFacetMap.get(selectedEntityIri) || [];
   const facetMatches = facetMap.get(selectedEntityIri) || [];
+  const totalFacetCount = restrictionMatches.length + facetMatches.length;
 
   if (!entry) {
     return (
@@ -511,10 +529,10 @@ export default function EntityDetail() {
       )}
 
       {/* Facet Properties */}
-      {entry.type === 'class' && !entry.isFacet && (
+      {entry.type === 'class' && !entry.isFacet && totalFacetCount > 0 && (
         <CollapsibleSection
-          title="Possible Facet Properties"
-          count={facetMatches.length > 0 ? facetMatches.length + ' facets' : null}
+          title="Facet Properties"
+          count={totalFacetCount > 0 ? totalFacetCount + ' facets' : null}
           defaultOpen={true}
           forceState={sectionForce}
         >
@@ -539,6 +557,7 @@ export default function EntityDetail() {
                 let value = '';
                 if (r.someValuesFrom) { constraint = 'someValuesFrom'; value = compactIri(r.someValuesFrom); }
                 else if (r.allValuesFrom) { constraint = 'allValuesFrom'; value = compactIri(r.allValuesFrom); }
+                else if (r.qualifiedCardinality != null) { constraint = 'qualifiedCardinality'; value = String(r.qualifiedCardinality) + (r.onClass ? ' on ' + compactIri(r.onClass) : ''); }
                 else if (r.cardinality != null) { constraint = 'cardinality'; value = String(r.cardinality); }
                 else if (r.minCardinality != null) { constraint = 'minCardinality'; value = String(r.minCardinality); }
                 else if (r.maxCardinality != null) { constraint = 'maxCardinality'; value = String(r.maxCardinality); }
@@ -556,13 +575,17 @@ export default function EntityDetail() {
                     </td>
                     <td className="prop-type">{constraint}</td>
                     <td className="prop-type">
-                      {(r.someValuesFrom || r.allValuesFrom) && entityIndex.has(r.someValuesFrom || r.allValuesFrom) ? (
-                        <span className="clickable-iri" onClick={() => selectEntity(r.someValuesFrom || r.allValuesFrom)}>
-                          {value}
-                        </span>
-                      ) : (
-                        value
-                      )}
+                      {(() => {
+                        const clickableIri = r.someValuesFrom || r.allValuesFrom || r.onClass;
+                        if (clickableIri && entityIndex.has(clickableIri)) {
+                          return (
+                            <span className="clickable-iri" onClick={() => selectEntity(clickableIri)}>
+                              {value}
+                            </span>
+                          );
+                        }
+                        return value;
+                      })()}
                     </td>
                   </tr>
                 );
