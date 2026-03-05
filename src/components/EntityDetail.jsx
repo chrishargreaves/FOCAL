@@ -5,6 +5,7 @@ import { extractShaclProperties, getOwlProperties, getOwlRestrictions, getClassH
 import { compactIri, extractLocalName, WELL_KNOWN_PREFIXES } from '../utils/prefixes.js';
 import { BADGE_ABBREVIATIONS } from '../store/config.js';
 import ClassHierarchy from './ClassHierarchy.jsx';
+import HierarchyDiagram from './HierarchyDiagram.jsx';
 import FacetProperties from './FacetProperties.jsx';
 import PropertyTable from './PropertyTable.jsx';
 
@@ -433,8 +434,15 @@ export default function EntityDetail() {
 
       {/* Hierarchy (classes only) */}
       {entry.type === 'class' && (
-        <CollapsibleSection title="Hierarchy" defaultOpen={true} forceState={sectionForce}>
+        <CollapsibleSection title="Hierarchies" defaultOpen={true} forceState={sectionForce}>
           <ClassHierarchy classIri={selectedEntityIri} forceState={sectionForce} />
+        </CollapsibleSection>
+      )}
+
+      {/* Inheritance Diagram (classes only) */}
+      {entry.type === 'class' && (
+        <CollapsibleSection title="Inheritance Diagram" defaultOpen={false} forceState={sectionForce}>
+          <HierarchyDiagram classIri={selectedEntityIri} />
         </CollapsibleSection>
       )}
 

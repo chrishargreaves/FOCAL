@@ -1405,3 +1405,12 @@ button {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-muted);
 }
+
+/* DAG Hierarchy Diagram */
+.dag-node { cursor: pointer; }
+.dag-node > rect:first-child { fill: var(--color-bg-secondary); stroke: var(--color-border); stroke-width: 1; transition: fill 0.15s; }
+.dag-node:hover > rect:first-child { fill: var(--color-bg-tertiary); }
+.dag-node-selected > rect:first-child { fill: var(--color-selected); stroke: var(--color-accent); stroke-width: 1.5; }
+.dag-node text { fill: var(--color-text-primary); font-family: var(--font-mono); font-size: 10px; }
+.dag-badge-text { fill: #fff; font-family: var(--font-mono); font-size: 7px; font-weight: 600; }
+.dag-edge { stroke: var(--color-text-muted); stroke-width: 1; fill: none; }
