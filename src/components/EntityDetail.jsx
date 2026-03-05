@@ -583,6 +583,85 @@ export default function EntityDetail() {
         <button className="detail-toolbar-btn" onClick={collapseAll}>Collapse All</button>
       </div>
 
+      {/* === Origin === */}
+
+      {/* Hierarchy (classes only) */}
+      {entry.type === 'class' && (
+        <CollapsibleSection title="Hierarchies" defaultOpen={true} forceState={sectionForce}>
+          <ClassHierarchy key={selectedEntityIri} classIri={selectedEntityIri} forceState={sectionForce} />
+        </CollapsibleSection>
+      )}
+
+      {/* Inheritance Diagram (classes only) */}
+      {entry.type === 'class' && (
+        <CollapsibleSection title="Inheritance Diagram" defaultOpen={false} forceState={sectionForce}>
+          <HierarchyDiagram key={selectedEntityIri} classIri={selectedEntityIri} />
+        </CollapsibleSection>
+      )}
+
+      {/* === Properties === */}
+
+      {/* Domain & Range (properties only) */}
+      {propertyDetails && (propertyDetails.domains.length > 0 || propertyDetails.ranges.length > 0) && (
+        <CollapsibleSection title="Domain &amp; Range" defaultOpen={true} forceState={sectionForce}>
+          <table className="property-table">
+            <thead>
+              <tr><th>Attribute</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+              {propertyDetails.domains.map(d => (
+                <tr key={`d-${d}`}>
+                  <td className="prop-name">Domain</td>
+                  <td className="prop-type">
+                    {entityIndex.has(d) ? (
+                      <span className="clickable-iri" onClick={() => selectEntity(d)}>{compactIri(d)}</span>
+                    ) : compactIri(d)}
+                  </td>
+                </tr>
+              ))}
+              {propertyDetails.ranges.map(r => (
+                <tr key={`r-${r}`}>
+                  <td className="prop-name">Range</td>
+                  <td className="prop-type">
+                    {entityIndex.has(r) ? (
+                      <span className="clickable-iri" onClick={() => selectEntity(r)}>{compactIri(r)}</span>
+                    ) : compactIri(r)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CollapsibleSection>
+      )}
+
+      {/* SHACL Property Shapes (properties only) */}
+      {propertyDetails?.usages.length > 0 && (
+        <CollapsibleSection title="SHACL Property Shapes" count={propertyDetails.usages.length} defaultOpen={true} forceState={sectionForce}>
+          <table className="property-table">
+            <thead>
+              <tr><th>Class</th><th>Type / Range</th><th>Cardinality</th></tr>
+            </thead>
+            <tbody>
+              {propertyDetails.usages.map((u, i) => (
+                <tr key={i}>
+                  <td className="prop-name">
+                    {entityIndex.has(u.classIri) ? (
+                      <span className="clickable-iri" onClick={() => selectEntity(u.classIri)}>{compactIri(u.classIri)}</span>
+                    ) : compactIri(u.classIri)}
+                  </td>
+                  <td className="prop-type">
+                    {u.typeIri && entityIndex.has(u.typeIri) ? (
+                      <span className="clickable-iri" onClick={() => selectEntity(u.typeIri)}>{u.type}</span>
+                    ) : u.type || '—'}
+                  </td>
+                  <td className="prop-card">{u.cardinality || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CollapsibleSection>
+      )}
+
       {/* Used By (properties only) */}
       {usedByClasses.length > 0 && (
         <CollapsibleSection title="Used By Classes" count={usedByClasses.length} defaultOpen={true} forceState={sectionForce}>
@@ -597,123 +676,6 @@ export default function EntityDetail() {
               </span>
             ))}
           </div>
-        </CollapsibleSection>
-      )}
-
-      {/* Property Details (properties only) */}
-      {propertyDetails && (
-        <>
-          {(propertyDetails.domains.length > 0 || propertyDetails.ranges.length > 0) && (
-            <CollapsibleSection title="Domain &amp; Range" defaultOpen={true} forceState={sectionForce}>
-              <table className="property-table">
-                <thead>
-                  <tr><th>Attribute</th><th>Value</th></tr>
-                </thead>
-                <tbody>
-                  {propertyDetails.domains.map(d => (
-                    <tr key={`d-${d}`}>
-                      <td className="prop-name">Domain</td>
-                      <td className="prop-type">
-                        {entityIndex.has(d) ? (
-                          <span className="clickable-iri" onClick={() => selectEntity(d)}>{compactIri(d)}</span>
-                        ) : compactIri(d)}
-                      </td>
-                    </tr>
-                  ))}
-                  {propertyDetails.ranges.map(r => (
-                    <tr key={`r-${r}`}>
-                      <td className="prop-name">Range</td>
-                      <td className="prop-type">
-                        {entityIndex.has(r) ? (
-                          <span className="clickable-iri" onClick={() => selectEntity(r)}>{compactIri(r)}</span>
-                        ) : compactIri(r)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CollapsibleSection>
-          )}
-          {propertyDetails.usages.length > 0 && (
-            <CollapsibleSection title="SHACL Property Shapes" count={propertyDetails.usages.length} defaultOpen={true} forceState={sectionForce}>
-              <table className="property-table">
-                <thead>
-                  <tr><th>Class</th><th>Type / Range</th><th>Cardinality</th></tr>
-                </thead>
-                <tbody>
-                  {propertyDetails.usages.map((u, i) => (
-                    <tr key={i}>
-                      <td className="prop-name">
-                        {entityIndex.has(u.classIri) ? (
-                          <span className="clickable-iri" onClick={() => selectEntity(u.classIri)}>{compactIri(u.classIri)}</span>
-                        ) : compactIri(u.classIri)}
-                      </td>
-                      <td className="prop-type">
-                        {u.typeIri && entityIndex.has(u.typeIri) ? (
-                          <span className="clickable-iri" onClick={() => selectEntity(u.typeIri)}>{u.type}</span>
-                        ) : u.type || '—'}
-                      </td>
-                      <td className="prop-card">{u.cardinality || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CollapsibleSection>
-          )}
-        </>
-      )}
-
-      {/* Referenced By (classes only) */}
-      {referencedBy.length > 0 && (
-        <CollapsibleSection title="Referenced By" count={referencedBy.length} defaultOpen={true} forceState={sectionForce}>
-          <table className="property-table">
-            <thead>
-              <tr>
-                <th>Entity</th>
-                <th>Via</th>
-                <th>Owner</th>
-              </tr>
-            </thead>
-            <tbody>
-              {referencedBy.map((ref, i) => (
-                <tr key={i}>
-                  <td className="prop-name">
-                    {entityIndex.has(ref.iri) ? (
-                      <span className="clickable-iri" onClick={() => selectEntity(ref.iri)}>
-                        {compactIri(ref.iri)}
-                      </span>
-                    ) : (
-                      compactIri(ref.iri)
-                    )}
-                  </td>
-                  <td className="prop-type">{ref.via}</td>
-                  <td className="prop-type">
-                    {ref.ownerIri && entityIndex.has(ref.ownerIri) ? (
-                      <span className="clickable-iri" onClick={() => selectEntity(ref.ownerIri)}>
-                        {compactIri(ref.ownerIri)}
-                      </span>
-                    ) : ref.ownerIri ? (
-                      compactIri(ref.ownerIri)
-                    ) : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CollapsibleSection>
-      )}
-
-      {/* Hierarchy (classes only) */}
-      {entry.type === 'class' && (
-        <CollapsibleSection title="Hierarchies" defaultOpen={true} forceState={sectionForce}>
-          <ClassHierarchy key={selectedEntityIri} classIri={selectedEntityIri} forceState={sectionForce} />
-        </CollapsibleSection>
-      )}
-
-      {/* Inheritance Diagram (classes only) */}
-      {entry.type === 'class' && (
-        <CollapsibleSection title="Inheritance Diagram" defaultOpen={false} forceState={sectionForce}>
-          <HierarchyDiagram key={selectedEntityIri} classIri={selectedEntityIri} />
         </CollapsibleSection>
       )}
 
@@ -873,6 +835,50 @@ export default function EntityDetail() {
           </table>
         </CollapsibleSection>
       )}
+
+      {/* === References === */}
+
+      {/* Referenced By (classes only) */}
+      {referencedBy.length > 0 && (
+        <CollapsibleSection title="Referenced By" count={referencedBy.length} defaultOpen={true} forceState={sectionForce}>
+          <table className="property-table">
+            <thead>
+              <tr>
+                <th>Entity</th>
+                <th>Via</th>
+                <th>Owner</th>
+              </tr>
+            </thead>
+            <tbody>
+              {referencedBy.map((ref, i) => (
+                <tr key={i}>
+                  <td className="prop-name">
+                    {entityIndex.has(ref.iri) ? (
+                      <span className="clickable-iri" onClick={() => selectEntity(ref.iri)}>
+                        {compactIri(ref.iri)}
+                      </span>
+                    ) : (
+                      compactIri(ref.iri)
+                    )}
+                  </td>
+                  <td className="prop-type">{ref.via}</td>
+                  <td className="prop-type">
+                    {ref.ownerIri && entityIndex.has(ref.ownerIri) ? (
+                      <span className="clickable-iri" onClick={() => selectEntity(ref.ownerIri)}>
+                        {compactIri(ref.ownerIri)}
+                      </span>
+                    ) : ref.ownerIri ? (
+                      compactIri(ref.ownerIri)
+                    ) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CollapsibleSection>
+      )}
+
+      {/* === Metadata === */}
 
       {/* Annotations */}
       {annotations.length > 0 && (
