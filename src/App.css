@@ -1406,6 +1406,35 @@ button {
   background: var(--color-text-muted);
 }
 
+/* Turtle source block */
+.turtle-source {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--color-text-primary);
+}
+.ttl-directive { color: #8959a8; }
+.ttl-uri { color: #4271ae; }
+.ttl-literal { color: #718c00; }
+.ttl-number { color: #f5871f; }
+.ttl-prefixed { color: #3e999f; }
+.ttl-punct { color: var(--color-text-muted); }
+.ttl-keyword { color: #8959a8; font-weight: 600; }
+
+[data-theme="dark"] .ttl-directive { color: #c792ea; }
+[data-theme="dark"] .ttl-uri { color: #82aaff; }
+[data-theme="dark"] .ttl-literal { color: #c3e88d; }
+[data-theme="dark"] .ttl-number { color: #f78c6c; }
+[data-theme="dark"] .ttl-prefixed { color: #89ddff; }
+[data-theme="dark"] .ttl-keyword { color: #c792ea; font-weight: 600; }
+
 /* DAG Hierarchy Diagram */
 .dag-node { cursor: pointer; }
 .dag-node > rect:first-child { fill: var(--color-bg-secondary); stroke: var(--color-border); stroke-width: 1; transition: fill 0.15s; }

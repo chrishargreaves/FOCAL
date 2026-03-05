@@ -212,6 +212,71 @@ export default function EntityDetail() {
       .sort((a, b) => extractLocalName(a).localeCompare(extractLocalName(b)));
   }, [stores, selectedEntityIri, entry?.type, entityIndex]);
 
+  // For properties: gather rdfs:range, rdfs:domain, and per-class SHACL usage
+  const propertyDetails = useMemo(() => {
+    if (entry?.type !== 'property') return null;
+    const propNode = namedNode(selectedEntityIri);
+    const RDFS_RANGE = namedNode(WELL_KNOWN_PREFIXES.rdfs + 'range');
+    const RDFS_DOMAIN = namedNode(WELL_KNOWN_PREFIXES.rdfs + 'domain');
+    const SH_PATH = namedNode(WELL_KNOWN_PREFIXES.sh + 'path');
+    const SH_PROPERTY = namedNode(WELL_KNOWN_PREFIXES.sh + 'property');
+    const SH_CLASS = namedNode(WELL_KNOWN_PREFIXES.sh + 'class');
+    const SH_DATATYPE = namedNode(WELL_KNOWN_PREFIXES.sh + 'datatype');
+    const SH_NODE_KIND = namedNode(WELL_KNOWN_PREFIXES.sh + 'nodeKind');
+    const SH_MIN_COUNT = namedNode(WELL_KNOWN_PREFIXES.sh + 'minCount');
+    const SH_MAX_COUNT = namedNode(WELL_KNOWN_PREFIXES.sh + 'maxCount');
+
+    const ranges = new Set();
+    const domains = new Set();
+    const usages = []; // { classIri, type, cardinality }
+
+    for (const { store } of stores) {
+      for (const q of store.getQuads(propNode, RDFS_RANGE, null, null)) {
+        if (q.object.termType === 'NamedNode') ranges.add(q.object.value);
+      }
+      for (const q of store.getQuads(propNode, RDFS_DOMAIN, null, null)) {
+        if (q.object.termType === 'NamedNode') domains.add(q.object.value);
+      }
+
+      // SHACL: find property shapes that use sh:path to this property
+      for (const pq of store.getQuads(null, SH_PATH, propNode, null)) {
+        const shapeNode = pq.subject;
+        // Find the class that owns this shape via sh:property
+        for (const spq of store.getQuads(null, SH_PROPERTY, shapeNode, null)) {
+          if (spq.subject.termType !== 'NamedNode') continue;
+          const classIri = spq.subject.value;
+
+          // Get type/range from the shape
+          const shClassQ = store.getQuads(shapeNode, SH_CLASS, null, null);
+          const shDtQ = store.getQuads(shapeNode, SH_DATATYPE, null, null);
+          const shNkQ = store.getQuads(shapeNode, SH_NODE_KIND, null, null);
+          const type = shClassQ.length > 0 ? shClassQ[0].object.value
+            : shDtQ.length > 0 ? shDtQ[0].object.value
+            : shNkQ.length > 0 ? shNkQ[0].object.value
+            : null;
+
+          const minQ = store.getQuads(shapeNode, SH_MIN_COUNT, null, null);
+          const maxQ = store.getQuads(shapeNode, SH_MAX_COUNT, null, null);
+          const minCount = minQ.length > 0 ? parseInt(minQ[0].object.value, 10) : null;
+          const maxCount = maxQ.length > 0 ? parseInt(maxQ[0].object.value, 10) : null;
+
+          usages.push({
+            classIri,
+            type: type ? compactIri(type) : '',
+            typeIri: type,
+            cardinality: formatCardinality(minCount, maxCount),
+          });
+        }
+      }
+    }
+
+    return {
+      ranges: [...ranges],
+      domains: [...domains],
+      usages: usages.sort((a, b) => extractLocalName(a.classIri).localeCompare(extractLocalName(b.classIri))),
+    };
+  }, [stores, selectedEntityIri, entry?.type]);
+
   // For classes: find properties/shapes that reference this class
   // via rdfs:range, sh:class, owl:someValuesFrom, owl:allValuesFrom
   const referencedBy = useMemo(() => {
@@ -333,6 +398,149 @@ export default function EntityDetail() {
   const issueUrl = getIssueUrl(source, entry);
   const groupName = entry.sourceGroup || source?.group || source?.name || '';
 
+  // Turtle serialization of the entity
+  const turtleSrc = useMemo(() => {
+    if (!selectedEntityIri) return '';
+    const subjectNode = namedNode(selectedEntityIri);
+    const usedPrefixes = new Map(); // prefix → namespace
+
+    function turtleTerm(term) {
+      if (term.termType === 'NamedNode') {
+        const compact = compactIri(term.value);
+        if (compact !== term.value) {
+          const colon = compact.indexOf(':');
+          const prefix = compact.slice(0, colon);
+          // Find the namespace for this prefix
+          if (WELL_KNOWN_PREFIXES[prefix]) {
+            usedPrefixes.set(prefix, WELL_KNOWN_PREFIXES[prefix]);
+          }
+          return compact;
+        }
+        return `<${term.value}>`;
+      }
+      if (term.termType === 'Literal') {
+        const escaped = term.value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        if (term.language) return `"${escaped}"@${term.language}`;
+        if (term.datatype && term.datatype.value !== 'http://www.w3.org/2001/XMLSchema#string') {
+          const dtCompact = compactIri(term.datatype.value);
+          if (dtCompact !== term.datatype.value) {
+            const colon = dtCompact.indexOf(':');
+            const prefix = dtCompact.slice(0, colon);
+            if (WELL_KNOWN_PREFIXES[prefix]) usedPrefixes.set(prefix, WELL_KNOWN_PREFIXES[prefix]);
+          }
+          // Shorthand for xsd:integer / xsd:decimal
+          if (term.datatype.value === 'http://www.w3.org/2001/XMLSchema#integer'
+            || term.datatype.value === 'http://www.w3.org/2001/XMLSchema#decimal') {
+            return term.value;
+          }
+          return `"${escaped}"^^${dtCompact}`;
+        }
+        return `"${escaped}"`;
+      }
+      if (term.termType === 'BlankNode') return `_:${term.value}`;
+      return `"${term.value}"`;
+    }
+
+    // Collect all quads for this subject, plus expand blank node objects one level
+    const allQuads = [];
+    const blankObjects = new Set();
+    for (const { store } of stores) {
+      for (const q of store.getQuads(subjectNode, null, null, null)) {
+        allQuads.push(q);
+        if (q.object.termType === 'BlankNode') blankObjects.add(q.object.value);
+      }
+    }
+
+    // Collect blank node quads (SHACL shapes, restrictions, etc.)
+    const bnodeQuads = new Map(); // bnodeId → [quads]
+    const bnodeQueue = [...blankObjects];
+    const visitedBnodes = new Set(blankObjects);
+    while (bnodeQueue.length > 0) {
+      const bnId = bnodeQueue.shift();
+      const quads = [];
+      for (const { store } of stores) {
+        for (const q of store.getQuads(DataFactory.blankNode(bnId), null, null, null)) {
+          quads.push(q);
+          if (q.object.termType === 'BlankNode' && !visitedBnodes.has(q.object.value)) {
+            visitedBnodes.add(q.object.value);
+            bnodeQueue.push(q.object.value);
+          }
+        }
+      }
+      if (quads.length > 0) bnodeQuads.set(bnId, quads);
+    }
+
+    if (allQuads.length === 0) return '';
+
+    // Group by predicate, render subject block
+    const byPred = new Map();
+    for (const q of allQuads) {
+      const key = q.predicate.value;
+      if (!byPred.has(key)) byPred.set(key, []);
+      byPred.get(key).push(q);
+    }
+
+    // Track the subject's compact IRI for prefix collection
+    const subjectCompact = turtleTerm(subjectNode);
+    const lines = [];
+    const predEntries = [...byPred.entries()];
+
+    function renderBnode(bnId, indent) {
+      const quads = bnodeQuads.get(bnId);
+      if (!quads || quads.length === 0) return `_:${bnId}`;
+      const parts = [];
+      for (const q of quads) {
+        let objStr;
+        if (q.object.termType === 'BlankNode' && bnodeQuads.has(q.object.value)) {
+          objStr = renderBnode(q.object.value, indent + '    ');
+        } else {
+          objStr = turtleTerm(q.object);
+        }
+        parts.push(`${indent}    ${turtleTerm(q.predicate)} ${objStr}`);
+      }
+      return `[\n${parts.join(' ;\n')}\n${indent}]`;
+    }
+
+    for (let i = 0; i < predEntries.length; i++) {
+      const [, quads] = predEntries[i];
+      const predStr = turtleTerm(quads[0].predicate);
+      const sep = i === predEntries.length - 1 ? ' .' : ' ;';
+      const objs = quads.map(q => {
+        if (q.object.termType === 'BlankNode' && bnodeQuads.has(q.object.value)) {
+          return renderBnode(q.object.value, '    ');
+        }
+        return turtleTerm(q.object);
+      });
+
+      if (i === 0) {
+        if (objs.length === 1) {
+          lines.push(`${subjectCompact} ${predStr} ${objs[0]}${sep}`);
+        } else {
+          lines.push(`${subjectCompact} ${predStr} ${objs[0]},`);
+          for (let j = 1; j < objs.length; j++) {
+            lines.push(`        ${objs[j]}${j === objs.length - 1 ? sep : ','}`);
+          }
+        }
+      } else {
+        if (objs.length === 1) {
+          lines.push(`    ${predStr} ${objs[0]}${sep}`);
+        } else {
+          lines.push(`    ${predStr} ${objs[0]},`);
+          for (let j = 1; j < objs.length; j++) {
+            lines.push(`        ${objs[j]}${j === objs.length - 1 ? sep : ','}`);
+          }
+        }
+      }
+    }
+
+    // Build prefix declarations (only used ones)
+    const prefixLines = [...usedPrefixes.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([p, ns]) => `@prefix ${p}: <${ns}> .`);
+
+    return [...prefixLines, '', ...lines].join('\n');
+  }, [stores, selectedEntityIri]);
+
   // Expand/collapse all sections — toggle between 'open' / 'closed' / null
   const [sectionForce, setSectionForce] = useState(null);
   const expandAll = useCallback(() => setSectionForce(prev => prev === 'open' ? 'open_' : 'open'), []);
@@ -392,6 +600,69 @@ export default function EntityDetail() {
         </CollapsibleSection>
       )}
 
+      {/* Property Details (properties only) */}
+      {propertyDetails && (
+        <>
+          {(propertyDetails.domains.length > 0 || propertyDetails.ranges.length > 0) && (
+            <CollapsibleSection title="Domain &amp; Range" defaultOpen={true} forceState={sectionForce}>
+              <table className="property-table">
+                <thead>
+                  <tr><th>Attribute</th><th>Value</th></tr>
+                </thead>
+                <tbody>
+                  {propertyDetails.domains.map(d => (
+                    <tr key={`d-${d}`}>
+                      <td className="prop-name">Domain</td>
+                      <td className="prop-type">
+                        {entityIndex.has(d) ? (
+                          <span className="clickable-iri" onClick={() => selectEntity(d)}>{compactIri(d)}</span>
+                        ) : compactIri(d)}
+                      </td>
+                    </tr>
+                  ))}
+                  {propertyDetails.ranges.map(r => (
+                    <tr key={`r-${r}`}>
+                      <td className="prop-name">Range</td>
+                      <td className="prop-type">
+                        {entityIndex.has(r) ? (
+                          <span className="clickable-iri" onClick={() => selectEntity(r)}>{compactIri(r)}</span>
+                        ) : compactIri(r)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CollapsibleSection>
+          )}
+          {propertyDetails.usages.length > 0 && (
+            <CollapsibleSection title="SHACL Property Shapes" count={propertyDetails.usages.length} defaultOpen={true} forceState={sectionForce}>
+              <table className="property-table">
+                <thead>
+                  <tr><th>Class</th><th>Type / Range</th><th>Cardinality</th></tr>
+                </thead>
+                <tbody>
+                  {propertyDetails.usages.map((u, i) => (
+                    <tr key={i}>
+                      <td className="prop-name">
+                        {entityIndex.has(u.classIri) ? (
+                          <span className="clickable-iri" onClick={() => selectEntity(u.classIri)}>{compactIri(u.classIri)}</span>
+                        ) : compactIri(u.classIri)}
+                      </td>
+                      <td className="prop-type">
+                        {u.typeIri && entityIndex.has(u.typeIri) ? (
+                          <span className="clickable-iri" onClick={() => selectEntity(u.typeIri)}>{u.type}</span>
+                        ) : u.type || '—'}
+                      </td>
+                      <td className="prop-card">{u.cardinality || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CollapsibleSection>
+          )}
+        </>
+      )}
+
       {/* Referenced By (classes only) */}
       {referencedBy.length > 0 && (
         <CollapsibleSection title="Referenced By" count={referencedBy.length} defaultOpen={true} forceState={sectionForce}>
@@ -435,14 +706,14 @@ export default function EntityDetail() {
       {/* Hierarchy (classes only) */}
       {entry.type === 'class' && (
         <CollapsibleSection title="Hierarchies" defaultOpen={true} forceState={sectionForce}>
-          <ClassHierarchy classIri={selectedEntityIri} forceState={sectionForce} />
+          <ClassHierarchy key={selectedEntityIri} classIri={selectedEntityIri} forceState={sectionForce} />
         </CollapsibleSection>
       )}
 
       {/* Inheritance Diagram (classes only) */}
       {entry.type === 'class' && (
         <CollapsibleSection title="Inheritance Diagram" defaultOpen={false} forceState={sectionForce}>
-          <HierarchyDiagram classIri={selectedEntityIri} />
+          <HierarchyDiagram key={selectedEntityIri} classIri={selectedEntityIri} />
         </CollapsibleSection>
       )}
 
@@ -618,8 +889,54 @@ export default function EntityDetail() {
           </div>
         </CollapsibleSection>
       )}
+
+      {/* Implementation (Turtle source) */}
+      {turtleSrc && (
+        <CollapsibleSection title="Implementation" defaultOpen={false} forceState={sectionForce}>
+          <HighlightedTurtle source={turtleSrc} />
+        </CollapsibleSection>
+      )}
     </div>
   );
+}
+
+/** Simple Turtle syntax highlighter. */
+function HighlightedTurtle({ source }) {
+  // Tokenize each line, wrapping recognized patterns in spans
+  const tokenRegex = /(@prefix\b|@base\b)|(<[^>]*>)|("(?:[^"\\]|\\.)*"(?:@[\w-]+|\^\^[\w:.-]+)?)|(\b\d+(?:\.\d+)?\b)|([\w-]+:[\w.-]*)|([;.,\[\]])|(\ba\b)/g;
+
+  const lines = source.split('\n');
+  const elements = [];
+
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+    tokenRegex.lastIndex = 0;
+
+    while ((match = tokenRegex.exec(line)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(line.slice(lastIndex, match.index));
+      }
+      const [text, directive, uri, literal, number, prefixed, punct, keyword] = match;
+      if (directive) parts.push(<span key={match.index} className="ttl-directive">{text}</span>);
+      else if (uri) parts.push(<span key={match.index} className="ttl-uri">{text}</span>);
+      else if (literal) parts.push(<span key={match.index} className="ttl-literal">{text}</span>);
+      else if (number) parts.push(<span key={match.index} className="ttl-number">{text}</span>);
+      else if (prefixed) parts.push(<span key={match.index} className="ttl-prefixed">{text}</span>);
+      else if (punct) parts.push(<span key={match.index} className="ttl-punct">{text}</span>);
+      else if (keyword) parts.push(<span key={match.index} className="ttl-keyword">{text}</span>);
+      else parts.push(text);
+      lastIndex = match.index + text.length;
+    }
+
+    if (lastIndex < line.length) parts.push(line.slice(lastIndex));
+    if (li > 0) elements.push('\n');
+    elements.push(...parts);
+  }
+
+  return <pre className="turtle-source">{elements}</pre>;
 }
 
 function formatCardinality(min, max) {
