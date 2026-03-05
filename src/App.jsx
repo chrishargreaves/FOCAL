@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useOntologyStore } from './store/ontologyStore.js';
+import { useEffect, useState, useMemo } from 'react';
+import { useOntologyStore, parseHashGroups } from './store/ontologyStore.js';
 import Omnibox from './components/Omnibox.jsx';
 import EntityList from './components/EntityList.jsx';
 import EntityDetail from './components/EntityDetail.jsx';
@@ -27,13 +27,47 @@ export default function App() {
     loadAllOntologies();
   }, [loadAllOntologies]);
 
-  // Deep linking: read hash on mount and on hashchange
+  // Derive loading state: all enabled sources are either ready or errored
+  const enabledSources = sources.filter(s => s.enabled);
+  const allLoaded = enabledSources.length > 0 && enabledSources.every(s => {
+    const state = ontologyState.get(s.id);
+    return state?.status === 'ready' || state?.status === 'error';
+  });
+
+  // Track initial load — splash screen only shows once, on first visit
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   useEffect(() => {
-    function resolveHash() {
-      const hash = window.location.hash.slice(1);
-      if (!hash) return;
-      const decoded = decodeURIComponent(hash);
-      // Normalise prefix/localName → prefix:localName for matching
+    if (allLoaded && !initialLoadDone) setInitialLoadDone(true);
+  }, [allLoaded]);
+  const showSplash = !initialLoadDone;
+
+  // Loading progress
+  const loadingProgress = useMemo(() => {
+    const total = enabledSources.length;
+    const done = enabledSources.filter(s => {
+      const state = ontologyState.get(s.id);
+      return state?.status === 'ready' || state?.status === 'error';
+    }).length;
+    return { done, total };
+  }, [enabledSources, ontologyState]);
+
+  // Deep linking: resolve entity from hash once loaded, and on hashchange
+  useEffect(() => {
+    if (!allLoaded) return;
+
+    function resolveHash(applyGroups) {
+      const rawHash = window.location.hash.slice(1);
+      if (!rawHash) return;
+      const { entity, groups } = parseHashGroups(rawHash);
+
+      // On hashchange (e.g. user pastes new URL), apply groups
+      if (applyGroups && groups) {
+        const store = useOntologyStore.getState();
+        store.setViewGroups(groups);
+      }
+
+      if (!entity) return;
+      const decoded = decodeURIComponent(entity);
       const asCompact = decoded.includes('/') && !decoded.includes('://')
         ? decoded.replace('/', ':')
         : decoded;
@@ -53,10 +87,11 @@ export default function App() {
       }
     }
 
-    resolveHash();
-    window.addEventListener('hashchange', resolveHash);
-    return () => window.removeEventListener('hashchange', resolveHash);
-  }, [entityIndex, selectEntity]);
+    resolveHash(false);
+    function onHashChange() { resolveHash(true); }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, [allLoaded, entityIndex, selectEntity]);
 
   // Group ALL sources by project (not just enabled)
   const allGroups = new Map();
@@ -107,6 +142,28 @@ export default function App() {
     setBannerDismissed(true);
     sessionStorage.setItem('focal-banner-dismissed', '1');
   };
+
+  // Loading screen — only on initial page load
+  if (showSplash) {
+    return (
+      <div className="app">
+        <div className="loading-screen">
+          <img src="logo.png" alt="FOCAL logo" className="loading-logo" />
+          <h1 className="loading-title">FOCAL</h1>
+          <p className="loading-subtitle">Forensic Ontologies Catalogued and Linked</p>
+          <div className="loading-bar-track">
+            <div
+              className="loading-bar-fill"
+              style={{ width: `${loadingProgress.total ? (loadingProgress.done / loadingProgress.total) * 100 : 0}%` }}
+            />
+          </div>
+          <p className="loading-status">
+            Loading ontologies... {loadingProgress.done}/{loadingProgress.total}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app">

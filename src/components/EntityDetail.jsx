@@ -385,19 +385,6 @@ export default function EntityDetail() {
   const facetMatches = facetMap.get(selectedEntityIri) || [];
   const totalFacetCount = restrictionMatches.length + facetMatches.length;
 
-  if (!entry) {
-    return (
-      <div className="entity-detail">
-        <div className="empty-state">Entity not found in index</div>
-      </div>
-    );
-  }
-
-  const source = sources.find(s => s.id === entry.sourceId);
-  const abbr = BADGE_ABBREVIATIONS[entry.sourceGroup] || entry.sourceGroup?.slice(0, 3) || '?';
-  const issueUrl = getIssueUrl(source, entry);
-  const groupName = entry.sourceGroup || source?.group || source?.name || '';
-
   // Turtle serialization of the entity
   const turtleSrc = useMemo(() => {
     if (!selectedEntityIri) return '';
@@ -545,6 +532,19 @@ export default function EntityDetail() {
   const [sectionForce, setSectionForce] = useState(null);
   const expandAll = useCallback(() => setSectionForce(prev => prev === 'open' ? 'open_' : 'open'), []);
   const collapseAll = useCallback(() => setSectionForce(prev => prev === 'closed' ? 'closed_' : 'closed'), []);
+
+  if (!entry) {
+    return (
+      <div className="entity-detail">
+        <div className="empty-state">Entity not found in index</div>
+      </div>
+    );
+  }
+
+  const source = sources.find(s => s.id === entry.sourceId);
+  const abbr = BADGE_ABBREVIATIONS[entry.sourceGroup] || entry.sourceGroup?.slice(0, 3) || '?';
+  const issueUrl = getIssueUrl(source, entry);
+  const groupName = entry.sourceGroup || source?.group || source?.name || '';
 
   return (
     <div className="entity-detail">

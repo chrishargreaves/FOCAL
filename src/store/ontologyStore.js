@@ -77,19 +77,51 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
 }
 
-function updateHash(iri) {
+function updateHash(iri, groups) {
+  const groupsParam = groups && groups.size > 0 ? `?groups=${[...groups].map(encodeURIComponent).join(',')}` : '';
   if (iri) {
     const compact = compactIri(iri);
     const hashValue = compact.includes(':') ? compact.replace(':', '/') : compact;
-    history.replaceState(null, '', `#${hashValue}`);
+    history.replaceState(null, '', `#${hashValue}${groupsParam}`);
+  } else if (groupsParam) {
+    history.replaceState(null, '', `#${groupsParam}`);
   } else {
     history.replaceState(null, '', window.location.pathname);
   }
 }
 
+/** Parse groups from hash query string, e.g. #observable/File?groups=UCO,CASE */
+export function parseHashGroups(hash) {
+  const qIdx = hash.indexOf('?');
+  if (qIdx === -1) return { entity: hash, groups: null };
+  const entity = hash.slice(0, qIdx);
+  const params = new URLSearchParams(hash.slice(qIdx));
+  const groupsStr = params.get('groups');
+  const groups = groupsStr ? new Set(groupsStr.split(',').map(decodeURIComponent)) : null;
+  return { entity, groups };
+}
+
 // Initialize theme immediately
 const initialTheme = loadTheme();
 applyTheme(initialTheme);
+
+// Parse hash groups at startup so they're available before first render
+const _initialHashGroups = (() => {
+  const hash = typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
+  if (!hash) return null;
+  const { groups } = parseHashGroups(hash);
+  return groups;
+})();
+
+// Apply hash groups to sources: enable sources whose group is in the hash, disable others
+function applyHashGroupsToSources(sources, hashGroups) {
+  if (!hashGroups) return sources;
+  return sources.map(s => {
+    const group = s.group || s.name;
+    const shouldBeOn = hashGroups.has(group);
+    return shouldBeOn !== s.enabled ? { ...s, enabled: shouldBeOn } : s;
+  });
+}
 
 /**
  * Get stores filtered by viewGroups. Pass null for all stores.
@@ -109,7 +141,7 @@ export function getFilteredStores(ontologyState, sources, viewGroups) {
 }
 
 export const useOntologyStore = create((set, get) => ({
-  sources: [...DEFAULT_ONTOLOGIES, ...loadCustomSources()],
+  sources: applyHashGroupsToSources([...DEFAULT_ONTOLOGIES, ...loadCustomSources()], _initialHashGroups),
   ontologyState: new Map(),
   ontologyIriCache: new Map(), // sourceId → ontologyIri, persists across disable/enable
   entityIndex: new Map(),
@@ -122,7 +154,7 @@ export const useOntologyStore = create((set, get) => ({
   navForward: [],      // forward stack for redo
   highlightedIndex: 0,
   typeFilter: null,
-  viewGroups: null, // null = show all groups; Set of group names when filtering
+  viewGroups: _initialHashGroups, // null = show all groups; Set of group names when filtering
   theme: initialTheme,
   showOntologyManager: false,
   toolbarGroups: loadToolbarGroups(), // null = derive from sources on first load
@@ -138,6 +170,9 @@ export const useOntologyStore = create((set, get) => ({
   setViewGroups: (groups) => {
     set({ viewGroups: groups });
     get().rebuildEntityStats();
+    // Update hash to reflect group filter
+    const iri = get().selectedEntityIri;
+    if (iri) updateHash(iri, groups);
   },
 
   selectEntity: (iri) => {
@@ -147,7 +182,7 @@ export const useOntologyStore = create((set, get) => ({
       ? [...navHistory, selectedEntityIri].slice(-50)  // keep last 50
       : navHistory;
     set({ selectedEntityIri: iri, navHistory: newHistory, navForward: [] });
-    updateHash(iri);
+    updateHash(iri, get().viewGroups);
   },
 
   // Called from hash resolution — doesn't push to history
@@ -164,7 +199,7 @@ export const useOntologyStore = create((set, get) => ({
       ? [selectedEntityIri, ...navForward].slice(0, 50)
       : navForward;
     set({ selectedEntityIri: prev, navHistory: newHistory, navForward: newForward });
-    updateHash(prev);
+    updateHash(prev, get().viewGroups);
   },
 
   goForward: () => {
@@ -176,7 +211,7 @@ export const useOntologyStore = create((set, get) => ({
       ? [...navHistory, selectedEntityIri].slice(-50)
       : navHistory;
     set({ selectedEntityIri: next, navHistory: newHistory, navForward: newForward });
-    updateHash(next);
+    updateHash(next, get().viewGroups);
   },
 
   toggleTheme: () => {
@@ -198,6 +233,11 @@ export const useOntologyStore = create((set, get) => ({
 
     try {
       const result = await fetchAndParse(source.url, { skipCache });
+
+      // If the source was disabled while loading, discard the result
+      const currentSource = get().sources.find(s => s.id === id);
+      if (!currentSource?.enabled) return;
+
       // Extract owl:Ontology IRI from the loaded store
       const ontQuads = result.store.getQuads(null, RDF_TYPE, OWL_ONTOLOGY, null);
       const ontologyIri = ontQuads.length > 0 && ontQuads[0].subject.termType === 'NamedNode'
@@ -254,6 +294,7 @@ export const useOntologyStore = create((set, get) => ({
     const entityIndex = new Map();
 
     for (const source of sources) {
+      if (!source.enabled) continue;
       const state = ontologyState.get(source.id);
       if (!state || state.status !== 'ready' || !state.store) continue;
 
@@ -313,12 +354,13 @@ export const useOntologyStore = create((set, get) => ({
   },
 
   rebuildFacetMap: () => {
-    const { ontologyState, entityIndex } = get();
+    const { ontologyState, entityIndex, sources } = get();
 
-    // Collect all ready stores
+    // Collect ready stores from enabled sources only
+    const enabledIds = new Set(sources.filter(s => s.enabled).map(s => s.id));
     const storeEntries = [];
     for (const [id, state] of ontologyState) {
-      if (state.status === 'ready' && state.store) {
+      if (enabledIds.has(id) && state.status === 'ready' && state.store) {
         storeEntries.push({ store: state.store, id });
       }
     }
@@ -341,11 +383,22 @@ export const useOntologyStore = create((set, get) => ({
   },
 
   rebuildEntityStats: () => {
+    try {
     const { ontologyState, sources, entityIndex, facetMap, viewGroups } = get();
 
     // Use filtered stores based on viewGroups
     const stores = getFilteredStores(ontologyState, sources, viewGroups);
-    if (stores.length === 0) return;
+    if (stores.length === 0) {
+      // Clear all stats when no stores are available
+      if (entityIndex.size > 0) {
+        const cleared = new Map();
+        for (const [iri, entry] of entityIndex) {
+          cleared.set(iri, { ...entry, stats: null });
+        }
+        set({ entityIndex: cleared });
+      }
+      return;
+    }
 
     // Caches to avoid re-querying common superclasses
     const shaclCache = new Map();   // classIri → property count
@@ -465,27 +518,54 @@ export const useOntologyStore = create((set, get) => ({
     }
 
     set({ entityIndex: updatedIndex });
+    } catch (err) {
+      console.error('[rebuildEntityStats] error:', err);
+    }
   },
 
   toggleGroup: (groupName) => {
-    const { sources, viewGroups } = get();
+    const { sources } = get();
     const groupSources = sources.filter(s => (s.group || s.name) === groupName);
     if (groupSources.length === 0) return;
     const allEnabled = groupSources.every(s => s.enabled);
     const target = !allEnabled;
-    for (const src of groupSources) {
-      if (src.enabled !== target) get().toggleSource(src.id);
-    }
-    // Sync viewGroups with the toggle so the sidebar reflects the change
-    if (viewGroups) {
-      const next = new Set(viewGroups);
-      if (target) {
-        next.add(groupName);
-      } else {
-        next.delete(groupName);
+
+    // Batch-update sources array (don't call toggleSource individually to avoid repeated rebuilds)
+    const updatedSources = sources.map(s => {
+      if ((s.group || s.name) === groupName && s.enabled !== target) {
+        return { ...s, enabled: target };
       }
-      get().setViewGroups(next);
+      return s;
+    });
+    set({ sources: updatedSources });
+    saveCustomSources(updatedSources);
+
+    if (target) {
+      // Enabling: load each source in the group
+      for (const src of groupSources) {
+        if (!src.enabled) get().loadOntology(src.id);
+      }
+    } else {
+      // Disabling: remove stores for group sources, then rebuild once
+      const newState = new Map(get().ontologyState);
+      for (const src of groupSources) {
+        if (src.enabled) newState.delete(src.id);
+      }
+      set({ ontologyState: newState });
+      get().rebuildEntityIndex();
+      get().rebuildFacetMap();
     }
+
+    // Update viewGroups to match all enabled groups
+    const enabledGroups = new Set();
+    for (const s of updatedSources) {
+      if (s.enabled) enabledGroups.add(s.group || s.name);
+    }
+    const newViewGroups = enabledGroups;
+    set({ viewGroups: newViewGroups });
+    get().rebuildEntityStats();
+    const iri = get().selectedEntityIri;
+    if (iri) updateHash(iri, newViewGroups);
   },
 
   toggleToolbarGroup: (groupName) => {
