@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useRef } from 'react';
 import { DataFactory } from 'n3';
 import { useOntologyStore, getFilteredStores } from '../store/ontologyStore.js';
 import { extractShaclProperties, getOwlProperties, getOwlRestrictions, getClassHierarchy } from '../utils/facetResolver.js';
@@ -10,6 +10,27 @@ import FacetProperties from './FacetProperties.jsx';
 import PropertyTable from './PropertyTable.jsx';
 
 const { namedNode } = DataFactory;
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef(null);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+    });
+  };
+  return (
+    <button className="copy-btn" onClick={handleCopy} title="Copy to clipboard">
+      {copied ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+      )}
+    </button>
+  );
+}
 
 // Linkify URLs and IRIs in text — makes them clickable hyperlinks,
 // or navigates internally if the IRI is in our entity index.
@@ -561,9 +582,10 @@ export default function EntityDetail() {
             </a>
           )}
         </div>
-        <div className="detail-compact-iri">{entry.compactIri}</div>
+        <div className="detail-compact-iri">{entry.compactIri}<CopyButton text={entry.compactIri} /></div>
         <div className="detail-full-iri">
           <a href={entry.iri} target="_blank" rel="noopener noreferrer">{entry.iri}</a>
+          <CopyButton text={entry.iri} />
         </div>
         {(entry.label || entry.comment) && (
           <div className="detail-description">
