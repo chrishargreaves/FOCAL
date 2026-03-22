@@ -103,9 +103,18 @@ function deriveSubModules(groupSources, ontologyIriCache) {
       const groupPrefix = (src.group || '') + ' ';
       label = src.name.startsWith(groupPrefix) ? src.name.slice(groupPrefix.length) : src.name;
     } else {
-      const path = rootIri.replace(/\/+$/, '');
-      const lastSegment = path.split('/').pop() || rootIri;
-      label = lastSegment.charAt(0).toUpperCase() + lastSegment.slice(1).replace(/-/g, ' ');
+      // Strip trailing version-like segments (e.g. /3.0.0) before extracting a label
+      let path = rootIri.replace(/\/+$/, '').replace(/\/\d+\.\d+(\.\d+)?$/, '');
+      const lastSegment = path.split('/').pop() || '';
+      const looksLikeDomainOrVersion = !lastSegment || lastSegment.includes('.');
+      if (!looksLikeDomainOrVersion) {
+        label = lastSegment.charAt(0).toUpperCase() + lastSegment.slice(1).replace(/-/g, ' ');
+      } else {
+        // Fall back to source name minus group prefix
+        const src = sources[0];
+        const groupPrefix = (src.group || '') + ' ';
+        label = src.name.startsWith(groupPrefix) ? src.name.slice(groupPrefix.length) : src.name;
+      }
     }
     result.push({ label, sources });
   }
@@ -113,8 +122,52 @@ function deriveSubModules(groupSources, ontologyIriCache) {
   return result;
 }
 
+function ErrorPopup({ erroredSources, ontologyState, loadOntology, onClose }) {
+  return (
+    <div className="error-popup-overlay" onClick={onClose}>
+      <div className="error-popup" onClick={e => e.stopPropagation()}>
+        <div className="error-popup-header">
+          <h4>{erroredSources.length} failed module{erroredSources.length > 1 ? 's' : ''}</h4>
+          <button className="error-popup-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="error-popup-list">
+          {erroredSources.map(src => {
+            const state = ontologyState.get(src.id);
+            const msg = state?.error || 'Unknown error';
+            return (
+              <div key={src.id} className="error-popup-item">
+                <div className="error-popup-item-header">
+                  <span className="ont-color-dot" style={{ background: src.color }} />
+                  <strong>{src.name}</strong>
+                  <button
+                    className="ont-remove-btn"
+                    onClick={() => loadOntology(src.id)}
+                    title="Retry"
+                    style={{ color: 'var(--color-warning)' }}
+                  >
+                    &#8635;
+                  </button>
+                </div>
+                <div className="error-popup-detail">
+                  <span className="error-popup-label">Error:</span>
+                  <code className="error-popup-msg">{msg}</code>
+                </div>
+                <div className="error-popup-detail">
+                  <span className="error-popup-label">URL:</span>
+                  <a href={src.url} target="_blank" rel="noopener noreferrer" className="error-popup-url">{src.url}</a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OntologyGroup({ groupName, groupSources, ontologyState, ontologyIriCache, toggleSource, loadOntology, removeCustomOntology, toggleToolbarGroup, showInToolbar }) {
   const [expanded, setExpanded] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
   const isSingleModule = groupSources.length === 1;
 
   const allEnabled = groupSources.every(s => s.enabled);
@@ -126,7 +179,8 @@ function OntologyGroup({ groupName, groupSources, ontologyState, ontologyIriCach
   }, 0);
   const readyCount = groupSources.filter(src => ontologyState.get(src.id)?.status === 'ready').length;
   const anyLoading = groupSources.some(src => ontologyState.get(src.id)?.status === 'loading');
-  const anyError = groupSources.some(src => ontologyState.get(src.id)?.status === 'error');
+  const erroredSources = groupSources.filter(src => ontologyState.get(src.id)?.status === 'error');
+  const anyError = erroredSources.length > 0;
 
   const handleGroupToggle = () => {
     const target = !allEnabled;
@@ -193,7 +247,19 @@ function OntologyGroup({ groupName, groupSources, ontologyState, ontologyIriCach
           {totalQuads > 0 && ` \u00B7 ${totalQuads} triples`}
           {anyLoading && ` \u00B7 loading ${readyCount}/${groupSources.length}`}
         </span>
-        {anyError && <span className="ont-error">errors</span>}
+        {anyError && (
+          <button className="ont-error ont-error-btn" onClick={() => setShowErrors(true)}>
+            {erroredSources.length} error{erroredSources.length > 1 ? 's' : ''}
+          </button>
+        )}
+        {showErrors && (
+          <ErrorPopup
+            erroredSources={erroredSources}
+            ontologyState={ontologyState}
+            loadOntology={loadOntology}
+            onClose={() => setShowErrors(false)}
+          />
+        )}
         <button
           className={`ont-toolbar-toggle ${showInToolbar ? 'active' : ''}`}
           onClick={() => toggleToolbarGroup(groupName)}
@@ -381,6 +447,10 @@ export default function OntologyManager() {
 
   return (
     <div className="ontology-manager">
+      <div className="ont-manager-header">
+        <h2>Ontology Settings</h2>
+        <p>Enable, disable, and configure ontology sources loaded into FOCAL.</p>
+      </div>
       <div className="ont-refresh-bar">
         <button
           className="ont-refresh-btn"

@@ -46,6 +46,9 @@ export default function Omnibox() {
         placeholder="Search classes, properties, individuals..."
         value={searchQuery}
         onChange={e => setSearchQuery(e.target.value)}
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck="false"
         onKeyDown={handleKeyDown}
         aria-label="Search ontology entities"
         aria-autocomplete="list"

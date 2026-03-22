@@ -41,14 +41,15 @@ export default function App() {
   }, [allLoaded]);
   const showSplash = !initialLoadDone;
 
-  // Loading progress
+  // Loading progress (all enabled sources)
   const loadingProgress = useMemo(() => {
     const total = enabledSources.length;
     const done = enabledSources.filter(s => {
       const state = ontologyState.get(s.id);
       return state?.status === 'ready' || state?.status === 'error';
     }).length;
-    return { done, total };
+    const loading = total - done;
+    return { done, total, loading };
   }, [enabledSources, ontologyState]);
 
   // Deep linking: resolve entity from hash once loaded, and on hashchange
@@ -112,14 +113,16 @@ export default function App() {
       const states = enabledInGroup.map(s => ontologyState.get(s.id));
       const totalQuads = states.reduce((sum, s) => sum + (s?.quadCount || 0), 0);
       const anyLoading = states.some(s => s?.status === 'loading');
-      const anyError = states.some(s => s?.status === 'error');
+      const errorCount = states.filter(s => s?.status === 'error').length;
+      const anyError = errorCount > 0;
       const allReady = enabledInGroup.length > 0 && states.every(s => s?.status === 'ready');
       const readyCount = states.filter(s => s?.status === 'ready').length;
 
       const status = !anyEnabled ? 'off' : anyLoading ? 'loading' : anyError && !allReady ? 'error' : allReady ? 'ready' : 'idle';
+      const errorSuffix = anyError ? `\n${errorCount} error${errorCount > 1 ? 's' : ''}` : '';
       const tooltip = !anyEnabled
         ? `${group}: disabled \u2014 click to enable`
-        : `${group}: ${readyCount}/${enabledInGroup.length} loaded (${totalQuads} triples)\nClick to disable`;
+        : `${group}: ${readyCount}/${enabledInGroup.length} loaded (${totalQuads} triples)${errorSuffix}\nClick to disable`;
 
       return (
         <button
@@ -129,6 +132,7 @@ export default function App() {
           title={tooltip}
           onClick={() => toggleGroup(group)}
         >
+          {anyError && <span className="status-error-badge">!</span>}
           <span className="status-label">{group}</span>
           {anyLoading && <span className="status-progress">{readyCount}/{enabledInGroup.length}</span>}
         </button>
@@ -194,55 +198,72 @@ export default function App() {
           {showOntologyManager ? 'Close' : 'Manage'}
         </button>
         <ThemeToggle />
+        <span className="version-label">v1.2.0</span>
       </header>
-      {showOntologyManager && <OntologyManager />}
-      <div className="app-body">
-        <EntityList />
-        <div className="detail-pane">
-          {(navHistory.length > 0 || navForward.length > 0) && (
-            <div className="nav-bar">
-              <button
-                className="nav-btn"
-                onClick={goBack}
-                disabled={navHistory.length === 0}
-                title="Go back"
-              >
-                &#8592;
-              </button>
-              <button
-                className="nav-btn"
-                onClick={goForward}
-                disabled={navForward.length === 0}
-                title="Go forward"
-              >
-                &#8594;
-              </button>
-              <div className="nav-breadcrumbs">
-                {navHistory.slice(-5).map((iri, i) => {
-                  const entry = entityIndex.get(iri);
-                  return (
-                    <span key={iri + i} className="nav-crumb" onClick={() => selectEntity(iri)}>
-                      {entry?.localName || iri.split(/[#/]/).pop()}
-                    </span>
-                  );
-                })}
-                {selectedEntityIri && (
-                  <span className="nav-crumb nav-crumb-current">
-                    {entityIndex.get(selectedEntityIri)?.localName || selectedEntityIri.split(/[#/]/).pop()}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          {selectedEntityIri ? (
-            <EntityDetail />
-          ) : (
-            <div className="detail-placeholder">
-              <p>Select an entity from the list to view details</p>
-            </div>
-          )}
+      {loadingProgress.loading > 0 && (
+        <div className="global-loading-bar">
+          <div
+            className="global-loading-fill"
+            style={{ width: `${loadingProgress.total ? (loadingProgress.done / loadingProgress.total) * 100 : 0}%` }}
+          />
+          <span className="global-loading-text">
+            Loading ontologies... {loadingProgress.done}/{loadingProgress.total}
+          </span>
         </div>
-      </div>
+      )}
+      {showOntologyManager ? (
+        <div className="app-body">
+          <OntologyManager />
+        </div>
+      ) : (
+        <div className="app-body">
+          <EntityList />
+          <div className="detail-pane">
+            {(navHistory.length > 0 || navForward.length > 0) && (
+              <div className="nav-bar">
+                <button
+                  className="nav-btn"
+                  onClick={goBack}
+                  disabled={navHistory.length === 0}
+                  title="Go back"
+                >
+                  &#8592;
+                </button>
+                <button
+                  className="nav-btn"
+                  onClick={goForward}
+                  disabled={navForward.length === 0}
+                  title="Go forward"
+                >
+                  &#8594;
+                </button>
+                <div className="nav-breadcrumbs">
+                  {navHistory.slice(-5).map((iri, i) => {
+                    const entry = entityIndex.get(iri);
+                    return (
+                      <span key={iri + i} className="nav-crumb" onClick={() => selectEntity(iri)}>
+                        {entry?.localName || iri.split(/[#/]/).pop()}
+                      </span>
+                    );
+                  })}
+                  {selectedEntityIri && (
+                    <span className="nav-crumb nav-crumb-current">
+                      {entityIndex.get(selectedEntityIri)?.localName || selectedEntityIri.split(/[#/]/).pop()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            {selectedEntityIri ? (
+              <EntityDetail />
+            ) : (
+              <div className="detail-placeholder">
+                <p>Select an entity from the list to view details</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
